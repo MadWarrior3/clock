@@ -6,6 +6,13 @@
 #include <sys/time.h>
 #include <string.h>
 
+#define READY (SIGRTMIN+2)
+#define COUNT SIGUSR1
+#define RING  SIGUSR2
+
+#define READ  0
+#define WRITE 1
+
 /*
  * SIGUSR1 est utilisé pour afficher l'heure / le temps écoulé / le temps restant selon le mode
  * SIGUSR2 est utilisé pour déclencher une sonnerie
@@ -21,9 +28,12 @@
 long t = 0; // en dixièmes de seconde
 long update_period = 1;
 
-char valeur_initiale[1024], action[1024], pas[1024], valeur_finale[1024];
-
 pid_t ppid, pid;
+int pipeh[2];
+
+int initial_value, final_value;
+
+int isReady = 0; // bool
 
 int selected_mode;
 
@@ -33,6 +43,10 @@ FILE* animation_info;
 FILE** animation_frames;
 
 
+long read_time(char input[])
+{
+    
+}
 
 void display_time()
 {
@@ -47,6 +61,7 @@ void display_time()
 
 void display_tick(int sig)
 {
+    read(pipeh[READ], &t, sizeof(t));
     if (t % update_period == 0) {
         display_time();
     }
@@ -62,13 +77,23 @@ void ring(int sig)
 void tick(int sig)
 {
     t++;
-    kill(ppid, SIGUSR1);
+    write(pipeh[WRITE], &t, sizeof(t));
+    kill(ppid, COUNT);
+
+    if (t >= final_value) {
+        kill(ppid, RING);
+    }
 }
 
 void tack(int sig)
 {
     t--;
-    kill(ppid, SIGUSR1);
+    write(pipeh[WRITE], &t, sizeof(t));
+    kill(ppid, COUNT);
+
+    if (t <= final_value) {
+        kill(ppid, RING);
+    }
 }
 
 enum {
@@ -89,28 +114,63 @@ int pick_from_cli_flag(char *flag)
     }
 }
 
+void ready(int sig)
+{
+    isReady = 1;
+}
+
 
 int main(int argc, char** argv)
-{
-    strcpy(action, argv[1]);
-    selected_mode = pick_from_cli_flag(action);
+{   
+    signal(READY, ready);
+
+    if (pipe(pipeh) == -1) {
+        fprintf(stderr,"Pipe failed");
+        exit(1);
+    }
 
     ppid = getpid();
     pid = fork();
 
     if (pid != 0) { // le père
+        selected_mode = pick_from_cli_flag(argv[1]);
+
         switch(selected_mode) {
             case TIMER_MODE:
-                strcpy(pas, "100000"/*ms*/);
-                strcpy(valeur_finale, "0");
-                strcpy(valeur_initiale, argv[2]);
-                signal(SIGUSR1, display_tick);
-                signal(SIGUSR2, ring);
+                signal(COUNT, display_tick);
+                signal(RING, ring);
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
+                initial_value = 10*atof(argv[2]);
+                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
+                final_value = 0;
+                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
+                kill(pid, READY);
+
                 wait(&status);
+
+                printf("babai");
                 break;
         }
     }
     else { // le fils
+        kill(ppid, READY);
+        // waiting for pipe to be filled
+        while(!isReady) {
+            pause();
+        }
+        // reading pipe
+        read(pipeh[READ], &selected_mode, sizeof(int));
+        read(pipeh[READ], &initial_value, sizeof(int));
+        read(pipeh[READ], &final_value, sizeof(int));
+
+        t = initial_value;
+        
         switch(selected_mode) {
             case TIMER_MODE:
                 signal(SIGALRM, tack);
