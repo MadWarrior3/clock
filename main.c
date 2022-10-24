@@ -43,9 +43,54 @@ FILE* animation_info;
 FILE** animation_frames;
 
 
+long time_to_wait_alarm(long input_time){
+    struct timeval current_time;
+    gettimeofday(&current_time, NULL);
+    
+    long final_time = input_time - ((current_time.tv_sec + current_time.tv_usec)/100000);
+    return final_time;
+}
+
 long read_time(char input[])
 {
-    
+    char temp[40];
+    long jours = 0, heures = 0, min = 0, dixiemes = 0;
+    float sec = 0;
+    int fin = 0, debut = 0;
+
+    for(input[fin]; input[fin] != '\0'; fin++){
+        if(input[fin] == 'j'){
+            strncpy(temp, input+debut, fin);
+            jours = atol(temp);
+            debut = fin+1;
+            printf("--temp jours : %s\n", temp);
+            strcpy(temp, "");
+        }
+        if(input[fin] == 'h'){
+            strncpy(temp, input+debut, fin);
+            heures = atol(temp);
+            debut = fin+1;
+            printf("--temp heures : %s\n", temp);
+            strcpy(temp, "");
+        }
+        if (input[fin] == 'm'){
+            strncpy(temp, input+debut, fin);
+            min = atol(temp);
+            debut = fin+1;
+            printf("--temp minutes : %s\n", temp);
+            strcpy(temp, "");
+        }
+        if (input[fin] == 's'){
+            strncpy(temp, input+debut, fin);
+            sec = atof(temp);
+            debut = fin+1;
+            printf("--temp sec : %s\n", temp);
+            strcpy(temp, "");
+        }
+    }
+
+    dixiemes = (sec*10) + (min*60*10) + (heures*60*60*10) + (jours*24*60*60*10);
+    return dixiemes;
 }
 
 void display_time()
@@ -122,7 +167,7 @@ void ready(int sig)
 
 int main(int argc, char** argv)
 {   
-    signal(READY, ready);
+    /*signal(READY, ready);
 
     if (pipe(pipeh) == -1) {
         fprintf(stderr,"Pipe failed");
@@ -137,7 +182,7 @@ int main(int argc, char** argv)
 
         switch(selected_mode) {
             case TIMER_MODE:
-                signal(COUNT, display_tick);
+                signal(COUNT, display_tick);-
                 signal(RING, ring);
 
                 while(!isReady) {
@@ -155,7 +200,12 @@ int main(int argc, char** argv)
                 wait(&status);
 
                 printf("babai");
-                break;
+            break;
+
+            case ALARM_MODE:
+            
+
+            break;
         }
     }
     else { // le fils
@@ -182,7 +232,18 @@ int main(int argc, char** argv)
         while (1) {
             pause();
         }
-    }
+    }*/
+
+    //  Test fonction conversion
+    // long dix_sec = read_time(argv[1]);
+    // printf("%ld\n", dix_sec);
+
+    // struct timeval current_time;
+    // gettimeofday(&current_time, NULL);
+    // printf("%ld : %ld", current_time.tv_sec, current_time.tv_usec);
+
+    printf("%ld", time_to_wait_alarm(read_time(argv[1])));
+
 
     return 0;
 }
