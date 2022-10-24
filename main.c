@@ -74,28 +74,24 @@ long read_time(char input[])
             strncpy(temp, input+debut, fin);
             jours = atol(temp);
             debut = fin+1;
-            mvwprintw(main_window, 0, 0, "--temp jours : %s\n", temp);
             strcpy(temp, "");
         }
         if(input[fin] == 'h'){
             strncpy(temp, input+debut, fin);
             heures = atol(temp);
             debut = fin+1;
-            mvwprintw(main_window, 0, 0, "--temp heures : %s\n", temp);
             strcpy(temp, "");
         }
         if (input[fin] == 'm'){
             strncpy(temp, input+debut, fin);
             min = atol(temp);
             debut = fin+1;
-            mvwprintw(main_window, 0, 0, "--temp minutes : %s\n", temp);
             strcpy(temp, "");
         }
         if (input[fin] == 's'){
             strncpy(temp, input+debut, fin);
             sec = atof(temp);
             debut = fin+1;
-            mvwprintw(main_window, 0, 0, "--temp sec : %s\n", temp);
             strcpy(temp, "");
         }
     }
@@ -113,6 +109,7 @@ void display_time()
         (t/10)%60,
         t%10
     );
+    
     wrefresh(main_window);
 }
 
@@ -184,7 +181,6 @@ int main(int argc, char** argv)
 
     initscr();
     main_window = newwin(LINES, COLS, 0, 0);
-    mvwprintw(main_window, 0, 0, "chienne");
     wrefresh(main_window);
 
     if (pipe(pipeh) == -1) {
