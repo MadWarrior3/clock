@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <string.h>
 #include <time.h>
+#include <ncurses.h>
 
 #define READY (SIGRTMIN+2)
 #define COUNT SIGUSR1
@@ -28,6 +29,8 @@
 // global variables
 long t = 0; // en dixièmes de seconde
 long update_period = 1;
+
+WINDOW *main_window;
 
 pid_t ppid, pid;
 int pipeh[2];
@@ -64,28 +67,28 @@ long read_time(char input[])
             strncpy(temp, input+debut, fin);
             jours = atol(temp);
             debut = fin+1;
-            printf("--temp jours : %s\n", temp);
+            mvwprintw(main_window, 0, 0, "--temp jours : %s\n", temp);
             strcpy(temp, "");
         }
         if(input[fin] == 'h'){
             strncpy(temp, input+debut, fin);
             heures = atol(temp);
             debut = fin+1;
-            printf("--temp heures : %s\n", temp);
+            mvwprintw(main_window, 0, 0, "--temp heures : %s\n", temp);
             strcpy(temp, "");
         }
         if (input[fin] == 'm'){
             strncpy(temp, input+debut, fin);
             min = atol(temp);
             debut = fin+1;
-            printf("--temp minutes : %s\n", temp);
+            mvwprintw(main_window, 0, 0, "--temp minutes : %s\n", temp);
             strcpy(temp, "");
         }
         if (input[fin] == 's'){
             strncpy(temp, input+debut, fin);
             sec = atof(temp);
             debut = fin+1;
-            printf("--temp sec : %s\n", temp);
+            mvwprintw(main_window, 0, 0, "--temp sec : %s\n", temp);
             strcpy(temp, "");
         }
     }
@@ -96,13 +99,14 @@ long read_time(char input[])
 
 void display_time()
 {
-    printf(
+    mvwprintw(main_window, 0, 0, 
         "%ld:%02ld'%02ld.%ld\"\n", 
         (t/36000),
         (t/600)%60,
         (t/10)%60,
         t%10
     );
+    wrefresh(main_window);
 }
 
 void display_tick(int sig)
@@ -115,8 +119,9 @@ void display_tick(int sig)
 
 void ring(int sig)
 {
-    printf("LEEEEEEET'S GO !");
+    endwin();
     kill(pid, SIGKILL);
+    printf("LEEEEEEET'S GO !\n");
     exit(0);
 }
 
@@ -167,8 +172,13 @@ void ready(int sig)
 
 
 int main(int argc, char** argv)
-{   
-    /*signal(READY, ready);
+{
+    signal(READY, ready);
+
+    initscr();
+    main_window = newwin(LINES, COLS, 0, 0);
+    mvwprintw(main_window, 0, 0, "chienne");
+    wrefresh(main_window);
 
     if (pipe(pipeh) == -1) {
         fprintf(stderr,"Pipe failed");
@@ -183,7 +193,7 @@ int main(int argc, char** argv)
 
         switch(selected_mode) {
             case TIMER_MODE:
-                signal(COUNT, display_tick);-
+                signal(COUNT, display_tick);
                 signal(RING, ring);
 
                 while(!isReady) {
@@ -200,7 +210,10 @@ int main(int argc, char** argv)
 
                 wait(&status);
 
-                printf("babai");
+                mvwprintw(main_window, 0, 0, "babai");
+                wrefresh(main_window);
+
+    wrefresh(main_window);
             break;
 
             case ALARM_MODE:
@@ -233,17 +246,7 @@ int main(int argc, char** argv)
         while (1) {
             pause();
         }
-    }*/
-
-    //  Test fonction conversion
-    // long dix_sec = read_time(argv[1]);
-    // printf("%ld\n", dix_sec);
-
-
-    time_t tt = time(0);
-    struct tm* lt = localtime(&tt);
-    t = (lt->tm_hour * 60 * 60 * 10) + (lt->tm_min * 60 * 10) + (lt->tm_sec * 10);
-
+    }
 
     return 0;
 }
