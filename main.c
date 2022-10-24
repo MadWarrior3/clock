@@ -241,8 +241,8 @@ int main(int argc, char** argv)
 
 
     time_t tt = time(0);
-    struct tm* t = localtime(&tt);
-    t = (t->tm_hour * 60 * 60 * 10) + (t->tm_min * 60 * 10) + (t->tm_sec * 10);
+    struct tm* lt = localtime(&tt);
+    t = (lt->tm_hour * 60 * 60 * 10) + (lt->tm_min * 60 * 10) + (lt->tm_sec * 10);
 
 
     return 0;
