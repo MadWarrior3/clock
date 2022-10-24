@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <string.h>
+#include <time.h>
 
 #define READY (SIGRTMIN+2)
 #define COUNT SIGUSR1
@@ -238,11 +239,10 @@ int main(int argc, char** argv)
     // long dix_sec = read_time(argv[1]);
     // printf("%ld\n", dix_sec);
 
-    // struct timeval current_time;
-    // gettimeofday(&current_time, NULL);
-    // printf("%ld : %ld", current_time.tv_sec, current_time.tv_usec);
 
-    printf("%ld", time_to_wait_alarm(read_time(argv[1])));
+    time_t tt = time(0);
+    struct tm* t = localtime(&tt);
+    t = (t->tm_hour * 60 * 60 * 10) + (t->tm_min * 60 * 10) + (t->tm_sec * 10);
 
 
     return 0;
