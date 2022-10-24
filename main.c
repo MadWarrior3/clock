@@ -45,10 +45,17 @@ FILE** animation_frames;
 
 
 long time_to_wait_alarm(long input_time){
-    struct timeval current_time;
-    gettimeofday(&current_time, NULL);
-    
-    long final_time = input_time - ((current_time.tv_sec + current_time.tv_usec)/100000);
+    //nb de dixiemes depuis le debut de la journée
+    time_t tt = time(0);
+    struct tm *lt = localtime(&tt);
+    t = (lt->tm_hour * 60 * 60 * 10) + (lt->tm_min * 60 * 10) + (lt->tm_sec * 10);
+
+    long final_time = input_time - t;
+
+    if(final_time <0){
+        final_time += 864000; //rajoute 24h si l'heure voulue est "avant" l'heure qu'il est
+    }
+
     return final_time;
 }
 
@@ -64,28 +71,24 @@ long read_time(char input[])
             strncpy(temp, input+debut, fin);
             jours = atol(temp);
             debut = fin+1;
-            printf("--temp jours : %s\n", temp);
             strcpy(temp, "");
         }
         if(input[fin] == 'h'){
             strncpy(temp, input+debut, fin);
             heures = atol(temp);
             debut = fin+1;
-            printf("--temp heures : %s\n", temp);
             strcpy(temp, "");
         }
         if (input[fin] == 'm'){
             strncpy(temp, input+debut, fin);
             min = atol(temp);
             debut = fin+1;
-            printf("--temp minutes : %s\n", temp);
             strcpy(temp, "");
         }
         if (input[fin] == 's'){
             strncpy(temp, input+debut, fin);
             sec = atof(temp);
             debut = fin+1;
-            printf("--temp sec : %s\n", temp);
             strcpy(temp, "");
         }
     }
@@ -168,7 +171,7 @@ void ready(int sig)
 
 int main(int argc, char** argv)
 {   
-    /*signal(READY, ready);
+    signal(READY, ready);
 
     if (pipe(pipeh) == -1) {
         fprintf(stderr,"Pipe failed");
@@ -183,7 +186,7 @@ int main(int argc, char** argv)
 
         switch(selected_mode) {
             case TIMER_MODE:
-                signal(COUNT, display_tick);-
+                signal(COUNT, display_tick);
                 signal(RING, ring);
 
                 while(!isReady) {
@@ -204,7 +207,24 @@ int main(int argc, char** argv)
             break;
 
             case ALARM_MODE:
-            
+                signal(COUNT, display_tick);
+                signal(RING, ring);
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
+                initial_value = time_to_wait_alarm(read_time(argv[2]));
+                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
+                final_value = 0;
+                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
+                kill(pid, READY);
+
+                wait(&status);
+
+                printf("babai");
 
             break;
         }
@@ -222,27 +242,31 @@ int main(int argc, char** argv)
 
         t = initial_value;
         
+        struct itimerval  val  = { {0, 100000}, {0, 100000} },
+                          val2 = { {0, 100000}, {0, 100000} };
+        
         switch(selected_mode) {
             case TIMER_MODE:
                 signal(SIGALRM, tack);
-                struct itimerval  val  = { {0, 100000}, {0, 100000} },
-                                  val2 = { {0, 100000}, {0, 100000} };
                 setitimer(ITIMER_REAL, &val, &val2);
                 break;
+
+            case ALARM_MODE:
+                signal(SIGALRM, tack);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
         }
         while (1) {
             pause();
         }
-    }*/
+    }
 
     //  Test fonction conversion
     // long dix_sec = read_time(argv[1]);
     // printf("%ld\n", dix_sec);
 
-
-    time_t tt = time(0);
-    struct tm* lt = localtime(&tt);
-    t = (lt->tm_hour * 60 * 60 * 10) + (lt->tm_min * 60 * 10) + (lt->tm_sec * 10);
+    printf("%ld", time_to_wait_alarm(read_time(argv[1])));
 
 
     return 0;
