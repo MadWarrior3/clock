@@ -176,7 +176,11 @@ void ready(int sig)
 
 
 int main(int argc, char** argv)
+<<<<<<< Updated upstream
 {
+=======
+{ 
+>>>>>>> Stashed changes
     signal(READY, ready);
 
     initscr();
@@ -213,16 +217,21 @@ int main(int argc, char** argv)
 
                 wait(&status);
 
+<<<<<<< Updated upstream
                 mvwprintw(main_window, 0, 0, "babai");
                 wrefresh(main_window);
 
     wrefresh(main_window);
             break;
+=======
+                printf("babai");
+                break;
+>>>>>>> Stashed changes
 
             case ALARM_MODE:
                 signal(COUNT, display_tick);
                 signal(RING, ring);
-
+                
                 while(!isReady) {
                     pause();
                 }
@@ -239,7 +248,28 @@ int main(int argc, char** argv)
 
                 printf("babai");
 
-            break;
+                break;
+
+            case CHRONO_MODE:
+                signal(COUNT, display_tick);
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
+                initial_value = 0;
+                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
+                final_value = 0;
+                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
+                kill(pid, READY);
+
+                wait(&status);
+
+                printf("babai");
+
+                break;
         }
     }
     else { // le fils
@@ -266,6 +296,11 @@ int main(int argc, char** argv)
 
             case ALARM_MODE:
                 signal(SIGALRM, tack);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
+            case CHRONO_MODE:
+                signal(SIGALRM, tick);
                 setitimer(ITIMER_REAL, &val, &val2);
                 break;
 
