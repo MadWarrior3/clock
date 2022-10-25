@@ -63,6 +63,7 @@ void time_to_ASCII_art(const long time)
     static const char ASCII_COLON[6][30]=            {"   ","██╗","╚═╝","██╗","╚═╝","   "};
     static const char ASCII_SINGLE_QUOTE[6][30]=     {"██╗","██║","╚═╝","   ","   ","   "};
     static const char ASCII_DOUBLE_QUOTE[6][30]=     {"██╗██╗","██║██║","╚═╝╚═╝","      ","      ","      "};
+bool isCounting = true;
 
     #define ASCII_9_width 8
     #define ASCII_8_width 8
@@ -178,6 +179,10 @@ void time_to_ASCII_art(const long time)
 }
 
 
+void to_count_or_not_to_count(int sig){
+    isCounting = !isCounting;
+}
+
 long time_to_wait_alarm(long input_time){
     //nb de dixiemes depuis le debut de la journée
     time_t tt = time(0);
@@ -262,6 +267,10 @@ void ring(int sig)
 
 void tick(int sig)
 {
+    if(!isCounting){
+        return;
+    }
+
     t++;
     write(pipeh[WRITE], &t, sizeof(t));
     kill(ppid, COUNT);
@@ -289,6 +298,7 @@ enum {
     TIME_MODE,
     UI_MODE
 };
+
 int pick_from_cli_flag(char *flag)
 {
     switch(flag[0]) {
@@ -348,16 +358,20 @@ int main(int argc, char** argv)
 
                 wait(&status);
 
+//<<<<<<< Updated upstream
                 mvwprintw(main_window, 0, 0, "babai");
                 wrefresh(main_window);
 
-    wrefresh(main_window);
-            break;
+                wrefresh(main_window);
+
+                printf("babai");
+                break;
+// >>>>>>> Stashed changes
 
             case ALARM_MODE:
                 signal(COUNT, display_tick);
                 signal(RING, ring);
-
+                
                 while(!isReady) {
                     pause();
                 }
@@ -374,7 +388,77 @@ int main(int argc, char** argv)
 
                 printf("babai");
 
-            break;
+                break;
+
+            case CHRONO_MODE:
+                signal(COUNT, display_tick);
+                signal(RING, ring); //au cas ou le compteur dépasse la valeur max
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
+                initial_value = 0;
+                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
+                final_value = 60000;    //chrono compte jusqu'a 60 000 max
+                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
+                kill(pid, READY);
+                
+                int ch;
+                while((ch = getch())!='q'){
+                    switch(ch){
+                        case ' ':
+                            kill(pid, COUNT);
+                            //while(getch()==' '){}
+                            
+                            break;
+
+                        case 'w':
+                            mvwprintw(main_window, 1, 0, 
+                                        "1 :  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                                    
+                            wrefresh(main_window);
+
+                            break;
+
+                        case 'x':
+                            mvwprintw(main_window, 2, 0, 
+                                        "2 :  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                            wrefresh(main_window);  
+
+                            break;
+
+                        case 'c':
+                            mvwprintw(main_window, 3, 0, 
+                                        "3 :  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                                        
+                            wrefresh(main_window);
+
+                            break;    
+                    }
+                }
+
+                mvwprintw(main_window, 0, 0, "babai");
+                wrefresh(main_window);
+
+                break;
         }
     }
     else { // le fils
@@ -404,6 +488,12 @@ int main(int argc, char** argv)
                 setitimer(ITIMER_REAL, &val, &val2);
                 break;
 
+            case CHRONO_MODE:
+                signal(COUNT, to_count_or_not_to_count);
+                signal(SIGALRM, tick);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
         }
         while (1) {
             pause();
@@ -414,8 +504,15 @@ int main(int argc, char** argv)
     // long dix_sec = read_time(argv[1]);
     // printf("%ld\n", dix_sec);
 
-    printf("%ld", time_to_wait_alarm(read_time(argv[1])));
+    //printf("%ld", time_to_wait_alarm(read_time(argv[1])));
 
+    while(1){
+        if(getch()=='c'){
+            printf("cacaprout\n");
+        }
+    }
+    
+    
 
     return 0;
 }
