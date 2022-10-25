@@ -1,3 +1,4 @@
+#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -32,7 +33,7 @@ long update_period = 1;
 
 WINDOW *main_window;
 
-pid_t ppid, pid;
+int ppid, pid;
 int pipeh[2];
 
 int initial_value, final_value;
@@ -45,6 +46,136 @@ int status;
 
 FILE* animation_info;
 FILE** animation_frames;
+
+void time_to_ASCII_art(const long time)
+{
+    static const char ASCII_9[6][30]=                {" █████╗ ","██╔══██╗","╚██████║"," ╚═══██║"," █████╔╝"," ╚════╝ "};
+    static const char ASCII_8[6][30]=                {" █████╗ ","██╔══██╗","╚█████╔╝","██╔══██╗","╚█████╔╝"," ╚════╝ "};
+    static const char ASCII_7[6][30]=                {"███████╗","╚════██║","   ██╔╝ ","  ██╔╝  ","  ██║   ","  ╚═╝   "};
+    static const char ASCII_6[6][30]=                {" ██████╗ ","██╔════╝ ","███████╗ ","██╔═══██╗","╚██████╔╝"," ╚═════╝ "};
+    static const char ASCII_5[6][30]=                {"███████╗","██╔════╝","███████╗","╚════██║","███████║","╚══════╝"};
+    static const char ASCII_4[6][30]=                {"██╗  ██╗","██║  ██║","███████║","╚════██║","     ██║","     ╚═╝"};
+    static const char ASCII_3[6][30]=                {"██████╗ ","╚════██╗"," █████╔╝"," ╚═══██╗","██████╔╝","╚═════╝ "};
+    static const char ASCII_2[6][30]=                {"██████╗ ","╚════██╗"," █████╔╝","██╔═══╝ ","███████╗","╚══════╝"};
+    static const char ASCII_1[6][30]=                {" ██╗","███║","╚██║"," ██║"," ██║"," ╚═╝"};
+    static const char ASCII_0[6][30]=                {" ██████╗ ","██╔═████╗","██║██╔██║","████╔╝██║","╚██████╔╝"," ╚═════╝ "};
+    static const char ASCII_DOT[6][30]=              {"   ","   ","   ","   ","██╗","╚═╝"};
+    static const char ASCII_COLON[6][30]=            {"   ","██╗","╚═╝","██╗","╚═╝","   "};
+    static const char ASCII_SINGLE_QUOTE[6][30]=     {"██╗","██║","╚═╝","   ","   ","   "};
+    static const char ASCII_DOUBLE_QUOTE[6][30]=     {"██╗██╗","██║██║","╚═╝╚═╝","      ","      ","      "};
+
+    #define ASCII_9_width 8
+    #define ASCII_8_width 8
+    #define ASCII_7_width 8
+    #define ASCII_6_width 9
+    #define ASCII_5_width 8
+    #define ASCII_4_width 8
+    #define ASCII_3_width 8
+    #define ASCII_2_width 8
+    #define ASCII_1_width 4
+    #define ASCII_0_width 9
+    #define ASCII_DOT_width 3
+    #define ASCII_COLON_width 3
+    #define ASCII_SINGLE_QUOTE_width 3
+    #define ASCII_DOUBLE_QUOTE_width 6
+
+    char str_time[100];
+    sprintf(
+        str_time,
+        "%ld:%02ld'%02ld.%01ld\"",
+        time % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+        time % (60 * 60 * 10) / (60 * 10), // minutes
+        time % (60 * 10) / 10, // seconds
+        time % 10 // tenths
+    );
+
+    wclear(main_window);
+
+    const char (* ASCII_art_value)[6][30];
+    int ASCII_art_width;
+    int offset = 0;
+    for (int i=0; str_time[i] != '\0'; i++) {
+        switch (str_time[i])
+        {
+        case '0': 
+            ASCII_art_value = &ASCII_0;
+            ASCII_art_width = ASCII_0_width;
+            break;
+
+        case '1': 
+            ASCII_art_value = &ASCII_1;
+            ASCII_art_width = ASCII_1_width;
+            break;
+
+        case '2': 
+            ASCII_art_value = &ASCII_2;
+            ASCII_art_width = ASCII_2_width;
+            break;
+
+        case '3': 
+            ASCII_art_value = &ASCII_3;
+            ASCII_art_width = ASCII_3_width;
+            break;
+
+        case '4': 
+            ASCII_art_value = &ASCII_4;
+            ASCII_art_width = ASCII_4_width;
+            break;
+
+        case '5': 
+            ASCII_art_value = &ASCII_5;
+            ASCII_art_width = ASCII_5_width;
+            break;
+
+        case '6': 
+            ASCII_art_value = &ASCII_6;
+            ASCII_art_width = ASCII_6_width;
+            break;
+
+        case '7': 
+            ASCII_art_value = &ASCII_7;
+            ASCII_art_width = ASCII_7_width;
+            break;
+
+        case '8': 
+            ASCII_art_value = &ASCII_8;
+            ASCII_art_width = ASCII_8_width;
+            break;
+
+        case '9': 
+            ASCII_art_value = &ASCII_9;
+            ASCII_art_width = ASCII_9_width;
+            break;
+
+        case '.': 
+            ASCII_art_value = &ASCII_DOT;
+            ASCII_art_width = ASCII_DOT_width;
+            break;
+
+        case ':': 
+            ASCII_art_value = &ASCII_COLON;
+            ASCII_art_width = ASCII_COLON_width;
+            break;
+
+        case '\'': 
+            ASCII_art_value = &ASCII_SINGLE_QUOTE;
+            ASCII_art_width = ASCII_SINGLE_QUOTE_width;
+            break;
+
+        case '"': 
+            ASCII_art_value = &ASCII_DOUBLE_QUOTE;
+            ASCII_art_width = ASCII_DOUBLE_QUOTE_width;
+            break;
+        }
+
+        for (int j=0; j<6; j++) {
+            mvwprintw(main_window, j, offset, (*ASCII_art_value)[j]);
+        }
+
+        offset += ASCII_art_width;
+    }
+    wrefresh(main_window);
+}
 
 
 long time_to_wait_alarm(long input_time){
@@ -102,15 +233,15 @@ long read_time(char input[])
 
 void display_time()
 {
-    mvwprintw(main_window, 0, 0, 
-        "%ld:%02ld'%02ld.%ld\"\n", 
-        (t/36000),
-        (t/600)%60,
-        (t/10)%60,
-        t%10
-    );
-    
-    wrefresh(main_window);
+    // mvwprintw(main_window, 0, 0, 
+    //     "%ld:%02ld'%02ld.%ld\"\n", 
+    //     (t/36000),
+    //     (t/600)%60,
+    //     (t/10)%60,
+    //     t%10
+    // );
+    time_to_ASCII_art(t);
+    // wrefresh(main_window);
 }
 
 void display_tick(int sig)
@@ -179,7 +310,11 @@ int main(int argc, char** argv)
 {
     signal(READY, ready);
 
+    setlocale(LC_ALL, "");
     initscr();
+    curs_set(0);
+    noecho();
+    timeout(-1);
     main_window = newwin(LINES, COLS, 0, 0);
     wrefresh(main_window);
 
