@@ -46,6 +46,11 @@ int status;
 FILE* animation_info;
 FILE** animation_frames;
 
+bool isCounting = true;
+
+void to_count_or_not_to_count(int sig){
+    isCounting = !isCounting;
+}
 
 long time_to_wait_alarm(long input_time){
     //nb de dixiemes depuis le debut de la journée
@@ -131,6 +136,10 @@ void ring(int sig)
 
 void tick(int sig)
 {
+    if(!isCounting){
+        return;
+    }
+
     t++;
     write(pipeh[WRITE], &t, sizeof(t));
     kill(ppid, COUNT);
@@ -158,6 +167,7 @@ enum {
     TIME_MODE,
     UI_MODE
 };
+
 int pick_from_cli_flag(char *flag)
 {
     switch(flag[0]) {
@@ -176,11 +186,7 @@ void ready(int sig)
 
 
 int main(int argc, char** argv)
-<<<<<<< Updated upstream
 {
-=======
-{ 
->>>>>>> Stashed changes
     signal(READY, ready);
 
     initscr();
@@ -217,16 +223,15 @@ int main(int argc, char** argv)
 
                 wait(&status);
 
-<<<<<<< Updated upstream
+//<<<<<<< Updated upstream
                 mvwprintw(main_window, 0, 0, "babai");
                 wrefresh(main_window);
 
-    wrefresh(main_window);
-            break;
-=======
+                wrefresh(main_window);
+
                 printf("babai");
                 break;
->>>>>>> Stashed changes
+// >>>>>>> Stashed changes
 
             case ALARM_MODE:
                 signal(COUNT, display_tick);
@@ -252,6 +257,7 @@ int main(int argc, char** argv)
 
             case CHRONO_MODE:
                 signal(COUNT, display_tick);
+                signal(RING, ring); //au cas ou le compteur dépasse la valeur max
 
                 while(!isReady) {
                     pause();
@@ -261,13 +267,61 @@ int main(int argc, char** argv)
                 write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
                 initial_value = 0;
                 write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
-                final_value = 0;
+                final_value = 60000;    //chrono compte jusqu'a 60 000 max
                 write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
                 kill(pid, READY);
+                
+                int ch;
+                while((ch = getch())!='q'){
+                    switch(ch){
+                        case ' ':
+                            kill(pid, COUNT);
+                            //while(getch()==' '){}
+                            
+                            break;
 
-                wait(&status);
+                        case 'w':
+                            mvwprintw(main_window, 1, 0, 
+                                        "1 :  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                                    
+                            wrefresh(main_window);
 
-                printf("babai");
+                            break;
+
+                        case 'x':
+                            mvwprintw(main_window, 2, 0, 
+                                        "2 :  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                            wrefresh(main_window);  
+
+                            break;
+
+                        case 'c':
+                            mvwprintw(main_window, 3, 0, 
+                                        "3 :  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                                        
+                            wrefresh(main_window);
+
+                            break;    
+                    }
+                }
+
+                mvwprintw(main_window, 0, 0, "babai");
+                wrefresh(main_window);
 
                 break;
         }
@@ -300,6 +354,7 @@ int main(int argc, char** argv)
                 break;
 
             case CHRONO_MODE:
+                signal(COUNT, to_count_or_not_to_count);
                 signal(SIGALRM, tick);
                 setitimer(ITIMER_REAL, &val, &val2);
                 break;
@@ -314,8 +369,15 @@ int main(int argc, char** argv)
     // long dix_sec = read_time(argv[1]);
     // printf("%ld\n", dix_sec);
 
-    printf("%ld", time_to_wait_alarm(read_time(argv[1])));
+    //printf("%ld", time_to_wait_alarm(read_time(argv[1])));
 
+    while(1){
+        if(getch()=='c'){
+            printf("cacaprout\n");
+        }
+    }
+    
+    
 
     return 0;
 }
