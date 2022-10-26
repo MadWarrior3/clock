@@ -76,6 +76,7 @@ long time_to_wait_alarm(long input_time);
 void to_count_or_not_to_count(int sig);
 void time_to_ASCII_art(const long time);
 void be_lazy(int sig);
+void be_quiet(int sig);
 void ready(int sig);
 int pick_from_cli_flag(char *flag);
 void init_ncurses(void);
@@ -190,7 +191,7 @@ int main(int argc, char** argv)
                         case 'a':
                             move(display_offset + 6, 0);
                             clrtoeol();
-                            signal(COUNT, be_lazy);
+                            signal(COUNT, be_quiet);
                             curs_set(1);
                             echo();
                             printw(" set alarm to ring at ");
@@ -220,7 +221,7 @@ int main(int argc, char** argv)
                         case 't':
                             move(display_offset + 6, 0);
                             clrtoeol();
-                            signal(COUNT, be_lazy);
+                            signal(COUNT, be_quiet);
                             curs_set(1);
                             echo();
                             printw(" countdown from ");
@@ -688,6 +689,11 @@ void display_tick(int sig)
 void be_lazy(int sig)
 {
     // nada
+}
+
+void be_quiet(int sig)
+{
+    t++;
 }
 
 void neco_dance(int sig)
