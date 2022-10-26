@@ -35,3 +35,6 @@ Clock est un réveil pour environnement linux et possède plusieurs fonctionnali
 	
 - La dernière est les **statistiques**. Quelques informations intéressantes sur vos actions effectuées seront affichées, également dans un nouveau terminal.
 	> Elle s'utilise en appuyant sur la touche **s** ou **r** de votre clavier et **q** pour en sortir. 
+
+
+Pour compiler, il faut utiliser la commande **``gcc main.c -o clock -lncursesw``**
