@@ -1,4 +1,5 @@
 #include <locale.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -31,21 +32,337 @@
 long t = 0; // en dixièmes de seconde
 long update_period = 1;
 
-WINDOW *main_window;
+int display_offset = 0;
 
-int ppid, pid;
-int pipeh[2];
+int ppid, pid,
+    apid, tpid, cpid;
+int pipeh[2], apipeh[2], tpipeh[2], cpipeh[2];
 
-int initial_value, final_value;
+long initial_value, final_value, alarm_time = -1;
 
 int isReady = 0; // bool
 
 int selected_mode;
 
 int status;
+bool isCounting = true;
 
 FILE* animation_info;
 FILE** animation_frames;
+
+long chrono_avg, chrono_avg_10, chrono_count;
+long timer_avg, timer_avg_10, timer_count;
+
+
+enum {
+    ALARM_MODE,
+    CHRONO_MODE,
+    TIMER_MODE,
+    TIME_MODE,
+    UI_MODE
+};
+
+void tack(int sig);
+void tick(int sig);
+void ring(int sig);
+void neco_dance(int sig);
+void display_tick(int sig);
+void display_time();
+long read_time(char input[]);
+long time_to_wait_alarm(long input_time);
+void to_count_or_not_to_count(int sig);
+void time_to_ASCII_art(const long time);
+void be_lazy(int sig);
+void ready(int sig);
+int pick_from_cli_flag(char *flag);
+void init_ncurses(void);
+
+void get_chrono_stats();
+void set_chrono_stats();
+
+void get_timer_stats();
+void set_timer_stats();
+
+void add_alarm_stats();
+
+
+
+int main(int argc, char** argv)
+{
+    if (argc >= 4) {
+        display_offset = atoi(argv[3]);
+    }
+
+    int ch;
+    signal(READY, ready);
+
+    if (pipe(pipeh) == -1) {
+        fprintf(stderr,"Pipe failed");
+        exit(1);
+    }
+
+    ppid = getpid();
+    pid = fork();
+
+    if (pid == 0) { // le fils
+        kill(ppid, READY);
+        // waiting for pipe to be filled
+        while(!isReady) {
+            pause();
+        }
+        // reading pipe
+        read(pipeh[READ], &selected_mode, sizeof(selected_mode));
+        read(pipeh[READ], &initial_value, sizeof(initial_value));
+        read(pipeh[READ], &final_value, sizeof(final_value));
+
+        t = initial_value;
+        
+        struct itimerval  val  = { {0, 100000}, {0, 100000} },
+                          val2 = { {0, 100000}, {0, 100000} };
+        
+        switch(selected_mode) {
+            case TIMER_MODE:
+                signal(SIGALRM, tack);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
+            case ALARM_MODE:
+                signal(SIGALRM, tack);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
+            case CHRONO_MODE:
+                signal(COUNT, to_count_or_not_to_count);
+                signal(SIGALRM, tick);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
+            case TIME_MODE:
+                signal(SIGALRM, tick);
+                setitimer(ITIMER_REAL, &val, &val2);
+                break;
+
+        }
+        while (1) {
+            pause();
+        }
+    }
+    else { // le père
+        if (argc > 1) {
+            selected_mode = pick_from_cli_flag(argv[1]);
+        }
+        else {
+            selected_mode = TIME_MODE;
+        }
+
+        switch(selected_mode) {
+            case TIME_MODE:
+                init_ncurses();
+
+                signal(COUNT, display_tick);
+                signal(RING, ring);
+
+                while(!isReady) {
+                    pause();
+                }
+
+                //nb de dixiemes depuis le debut de la journée
+                time_t tt = time(0);
+                struct tm *lt = localtime(&tt);
+                t = (lt->tm_hour * 60 * 60 * 10) + (lt->tm_min * 60 * 10) + (lt->tm_sec * 10);
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(selected_mode)); // self-explanatory
+                initial_value = t;
+                write(pipeh[WRITE], &initial_value, sizeof(initial_value)); // initial_value
+                final_value = -1;
+                write(pipeh[WRITE], &final_value, sizeof(final_value)); // final_value
+                kill(pid, READY);
+
+                while((ch = getch()) != 'q'){
+                    switch(ch){
+                        case 'a':
+                            move(display_offset + 6, 0);
+                            clrtoeol();
+                            if (alarm_time == -1) {
+                                signal(COUNT, be_lazy);
+                                curs_set(1);
+                                echo();
+                                printw(" set alarm to ring at ");
+                                char str[200];
+                                scanw("%s", str);
+                                alarm_time = read_time(str);
+                                curs_set(0);
+                                noecho();
+                                signal(COUNT, display_tick);
+
+                                move(display_offset + 6, 0);
+                                clrtoeol();
+                                printw("alarm :  %ld:%02ld'%02ld.%01ld\"",
+                                    alarm_time % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+                                    alarm_time % (60 * 60 * 10) / (60 * 10), // minutes
+                                    alarm_time % (60 * 10) / 10, // seconds
+                                    alarm_time % 10 // tenths
+                                );
+                            }
+                            else {
+                                kill(apid, SIGKILL);
+                            }
+                            break;
+
+                        case 'z':
+                        case 't':
+                            refresh();  
+
+                            break;
+
+                        case 'c':
+                        case 'e':
+                                        
+                            refresh();
+
+                            break;    
+
+                        case 'r':
+                        case 's':
+
+                            break;
+                    }
+                }
+
+                endwin();
+                printf("babai");
+                break;
+
+            case TIMER_MODE:
+                init_ncurses();
+
+                signal(COUNT, display_tick);
+                signal(RING, ring);
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(selected_mode)); // self-explanatory
+                initial_value = read_time(argv[2]);
+                write(pipeh[WRITE], &initial_value, sizeof(initial_value)); // initial_value
+                final_value = 0;
+                write(pipeh[WRITE], &final_value, sizeof(final_value)); // final_value
+                kill(pid, READY);
+
+                wait(&status);
+
+                mvprintw(display_offset, 0, "babai");
+                refresh();
+
+                printf("babai");
+                break;
+
+            case ALARM_MODE:
+                signal(COUNT, be_lazy);
+                signal(RING, ring);
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(selected_mode)); // self-explanatory
+                initial_value = time_to_wait_alarm(read_time(argv[2]));
+                write(pipeh[WRITE], &initial_value, sizeof(initial_value)); // initial_value
+                final_value = 0;
+                write(pipeh[WRITE], &final_value, sizeof(final_value)); // final_value
+                kill(pid, READY);
+
+                printf(
+                    "alarm set !\nit will ring after %ld:%02ld'%02.1lf\" !\n", 
+                    (initial_value / (10 * 60 * 60)), 
+                    (initial_value / (10 * 60)) % 60, 
+                    (initial_value % 600) / 10.0
+                );
+
+                wait(&status);
+                break;
+
+            case CHRONO_MODE:
+                init_ncurses();
+                
+                signal(COUNT, display_tick);
+                signal(RING, ring); //au cas ou le compteur dépasse la valeur max
+
+                while(!isReady) {
+                    pause();
+                }
+
+                // sending intialization data
+                write(pipeh[WRITE], &selected_mode, sizeof(selected_mode)); // self-explanatory
+                initial_value = 0;
+                write(pipeh[WRITE], &initial_value, sizeof(initial_value)); // initial_value
+                final_value = 60000;    //chrono compte jusqu'a 60 000 max
+                write(pipeh[WRITE], &final_value, sizeof(final_value)); // final_value
+                kill(pid, READY);
+                
+                mvprintw(6 + display_offset, 0, "[W]");
+                mvprintw(7 + display_offset, 0, "[X]");
+                mvprintw(8 + display_offset, 0, "[C]");
+
+                while((ch = getch()) != 'q'){
+                    switch(ch){
+                        case ' ':
+                            kill(pid, COUNT);                            
+                            break;
+
+                        case 'w':
+                            mvprintw(6 + display_offset, 0, 
+                                        "[W]  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                                    
+                            refresh();
+
+                            break;
+
+                        case 'x':
+                            mvprintw(7 + display_offset, 0, 
+                                        "[X]  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                            refresh();  
+
+                            break;
+
+                        case 'c':
+                            mvprintw(8 + display_offset, 0, 
+                                        "[C]  %ld:%02ld'%02ld.%ld\"\n", 
+                                        (t/36000),
+                                        (t/600)%60,
+                                        (t/10)%60,
+                                        t%10
+                                        );
+                                        
+                            refresh();
+
+                            break;    
+                    }
+                }
+
+                endwin();
+                printf("babai");
+
+                break;
+        }
+    }
+
+    return 0;
+}
 
 void time_to_ASCII_art(const long time)
 {
@@ -63,7 +380,6 @@ void time_to_ASCII_art(const long time)
     static const char ASCII_COLON[6][30]=            {"   ","██╗","╚═╝","██╗","╚═╝","   "};
     static const char ASCII_SINGLE_QUOTE[6][30]=     {"██╗","██║","╚═╝","   ","   ","   "};
     static const char ASCII_DOUBLE_QUOTE[6][30]=     {"██╗██╗","██║██║","╚═╝╚═╝","      ","      ","      "};
-bool isCounting = true;
 
     #define ASCII_9_width 8
     #define ASCII_8_width 8
@@ -90,7 +406,12 @@ bool isCounting = true;
         time % 10 // tenths
     );
 
-    wclear(main_window);
+    move(0 + display_offset, 0); clrtoeol();
+    move(1 + display_offset, 0); clrtoeol();
+    move(2 + display_offset, 0); clrtoeol();
+    move(3 + display_offset, 0); clrtoeol();
+    move(4 + display_offset, 0); clrtoeol();
+    move(5 + display_offset, 0); clrtoeol();
 
     const char (* ASCII_art_value)[6][30];
     int ASCII_art_width;
@@ -170,20 +491,22 @@ bool isCounting = true;
         }
 
         for (int j=0; j<6; j++) {
-            mvwprintw(main_window, j, offset, (*ASCII_art_value)[j]);
+            mvprintw(j + display_offset, offset, (*ASCII_art_value)[j]);
         }
 
         offset += ASCII_art_width;
     }
-    wrefresh(main_window);
+    refresh();
 }
 
 
-void to_count_or_not_to_count(int sig){
+void to_count_or_not_to_count(int sig)
+{
     isCounting = !isCounting;
 }
 
-long time_to_wait_alarm(long input_time){
+long time_to_wait_alarm(long input_time)
+{
     //nb de dixiemes depuis le debut de la journée
     time_t tt = time(0);
     struct tm *lt = localtime(&tt);
@@ -238,7 +561,7 @@ long read_time(char input[])
 
 void display_time()
 {
-    // mvwprintw(main_window, 0, 0, 
+    // mvprintw(0, 0, 
     //     "%ld:%02ld'%02ld.%ld\"\n", 
     //     (t/36000),
     //     (t/600)%60,
@@ -246,7 +569,7 @@ void display_time()
     //     t%10
     // );
     time_to_ASCII_art(t);
-    // wrefresh(main_window);
+    // refresh();
 }
 
 void display_tick(int sig)
@@ -257,11 +580,27 @@ void display_tick(int sig)
     }
 }
 
+void be_lazy(int sig)
+{
+    // nada
+}
+
+void neco_dance(int sig)
+{
+    refresh();
+}
+
 void ring(int sig)
 {
+    printf("ding !");
+
+    if (selected_mode == ALARM_MODE) {
+        init_ncurses();
+    }    
+        
+    // quit
     endwin();
     kill(pid, SIGKILL);
-    printf("LEEEEEEET'S GO !\n");
     exit(0);
 }
 
@@ -275,8 +614,10 @@ void tick(int sig)
     write(pipeh[WRITE], &t, sizeof(t));
     kill(ppid, COUNT);
 
-    if (t >= final_value) {
-        kill(ppid, RING);
+    if (final_value >= 0) {
+        if (t >= final_value) {
+            kill(ppid, RING);
+        }
     }
 }
 
@@ -286,18 +627,12 @@ void tack(int sig)
     write(pipeh[WRITE], &t, sizeof(t));
     kill(ppid, COUNT);
 
-    if (t <= final_value) {
-        kill(ppid, RING);
+    if (final_value >= 0) {
+        if (t <= final_value) {
+            kill(ppid, RING);
+        }
     }
 }
-
-enum {
-    ALARM_MODE,
-    CHRONO_MODE,
-    TIMER_MODE,
-    TIME_MODE,
-    UI_MODE
-};
 
 int pick_from_cli_flag(char *flag)
 {
@@ -315,204 +650,125 @@ void ready(int sig)
     isReady = 1;
 }
 
-
-int main(int argc, char** argv)
+void init_ncurses(void)
 {
-    signal(READY, ready);
-
     setlocale(LC_ALL, "");
     initscr();
     curs_set(0);
     noecho();
+    raw();
     timeout(-1);
-    main_window = newwin(LINES, COLS, 0, 0);
-    wrefresh(main_window);
+    refresh();
+    start_color();
+}
 
-    if (pipe(pipeh) == -1) {
-        fprintf(stderr,"Pipe failed");
-        exit(1);
-    }
+void get_chrono_stats()
+{
+    FILE *f = fopen("chrono.clst", "r");
+    char line[200] = "";
 
-    ppid = getpid();
-    pid = fork();
+    // reading global average, format is "moy XXhXXmXX.Xs"
+    fgets(line, 199, f);
+    chrono_avg = read_time(line + 4);
 
-    if (pid != 0) { // le père
-        selected_mode = pick_from_cli_flag(argv[1]);
+    // reading last 10 average, format is "moy10 XXhXXmXX.Xs"
+    fgets(line, 199, f);
+    chrono_avg = read_time(line + 6);
 
-        switch(selected_mode) {
-            case TIMER_MODE:
-                signal(COUNT, display_tick);
-                signal(RING, ring);
+    // reading count, format is "count XXX"
+    fgets(line, 199, f);
+    chrono_avg = atol(line + 6);
 
-                while(!isReady) {
-                    pause();
-                }
+    fclose(f);
+}
 
-                // sending intialization data
-                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
-                initial_value = 10*atof(argv[2]);
-                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
-                final_value = 0;
-                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
-                kill(pid, READY);
+void set_chrono_stats()
+{
+    FILE *f = fopen("chrono.clst", "w");
 
-                wait(&status);
+    fprintf(
+        f, 
+        "moy %ldh%02ldm%02ld.%ld\n"
+        "moy10 %ldh%02ldm%02ld.%ld\n"
+        "count %ld",
 
-//<<<<<<< Updated upstream
-                mvwprintw(main_window, 0, 0, "babai");
-                wrefresh(main_window);
+        chrono_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+        chrono_avg % (60 * 60 * 10) / (60 * 10), // minutes
+        chrono_avg % (60 * 10) / 10, // seconds
+        chrono_avg % 10, // tenths
 
-                wrefresh(main_window);
+        chrono_avg_10 % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+        chrono_avg_10 % (60 * 60 * 10) / (60 * 10), // minutes
+        chrono_avg_10 % (60 * 10) / 10, // seconds
+        chrono_avg_10 % 10, // tenths
 
-                printf("babai");
-                break;
-// >>>>>>> Stashed changes
+        chrono_count
+    );
 
-            case ALARM_MODE:
-                signal(COUNT, display_tick);
-                signal(RING, ring);
-                
-                while(!isReady) {
-                    pause();
-                }
+    fclose(f);
+}
 
-                // sending intialization data
-                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
-                initial_value = time_to_wait_alarm(read_time(argv[2]));
-                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
-                final_value = 0;
-                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
-                kill(pid, READY);
 
-                wait(&status);
+void get_timer_stats()
+{
+    FILE *f = fopen("timer.clst", "r");
+    char line[200] = "";
 
-                printf("babai");
+    // reading global average, format is "moy XXhXXmXX.Xs"
+    fgets(line, 199, f);
+    timer_avg = read_time(line + 4);
 
-                break;
+    // reading last 10 average, format is "moy10 XXhXXmXX.Xs"
+    fgets(line, 199, f);
+    timer_avg = read_time(line + 6);
 
-            case CHRONO_MODE:
-                signal(COUNT, display_tick);
-                signal(RING, ring); //au cas ou le compteur dépasse la valeur max
+    // reading count, format is "count XXX"
+    fgets(line, 199, f);
+    timer_avg = atol(line + 6);
 
-                while(!isReady) {
-                    pause();
-                }
+    fclose(f);
+}
 
-                // sending intialization data
-                write(pipeh[WRITE], &selected_mode, sizeof(int)); // self-explanatory
-                initial_value = 0;
-                write(pipeh[WRITE], &initial_value, sizeof(int)); // initial_value
-                final_value = 60000;    //chrono compte jusqu'a 60 000 max
-                write(pipeh[WRITE], &final_value, sizeof(int)); // final_value
-                kill(pid, READY);
-                
-                int ch;
-                while((ch = getch())!='q'){
-                    switch(ch){
-                        case ' ':
-                            kill(pid, COUNT);
-                            //while(getch()==' '){}
-                            
-                            break;
 
-                        case 'w':
-                            mvwprintw(main_window, 1, 0, 
-                                        "1 :  %ld:%02ld'%02ld.%ld\"\n", 
-                                        (t/36000),
-                                        (t/600)%60,
-                                        (t/10)%60,
-                                        t%10
-                                        );
-                                    
-                            wrefresh(main_window);
+void set_timer_stats()
+{
+    FILE *f = fopen("timer.clst", "w");
 
-                            break;
+    fprintf(
+        f, 
+        "moy %ldh%02ldm%02ld.%ld\n"
+        "moy10 %ldh%02ldm%02ld.%ld\n"
+        "count %ld",
 
-                        case 'x':
-                            mvwprintw(main_window, 2, 0, 
-                                        "2 :  %ld:%02ld'%02ld.%ld\"\n", 
-                                        (t/36000),
-                                        (t/600)%60,
-                                        (t/10)%60,
-                                        t%10
-                                        );
-                            wrefresh(main_window);  
+        timer_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+        timer_avg % (60 * 60 * 10) / (60 * 10), // minutes
+        timer_avg % (60 * 10) / 10, // seconds
+        timer_avg % 10, // tenths
 
-                            break;
+        timer_avg_10 % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+        timer_avg_10 % (60 * 60 * 10) / (60 * 10), // minutes
+        timer_avg_10 % (60 * 10) / 10, // seconds
+        timer_avg_10 % 10, // tenths
 
-                        case 'c':
-                            mvwprintw(main_window, 3, 0, 
-                                        "3 :  %ld:%02ld'%02ld.%ld\"\n", 
-                                        (t/36000),
-                                        (t/600)%60,
-                                        (t/10)%60,
-                                        t%10
-                                        );
-                                        
-                            wrefresh(main_window);
+        timer_count
+    );
 
-                            break;    
-                    }
-                }
+    fclose(f);
+}
 
-                mvwprintw(main_window, 0, 0, "babai");
-                wrefresh(main_window);
 
-                break;
-        }
-    }
-    else { // le fils
-        kill(ppid, READY);
-        // waiting for pipe to be filled
-        while(!isReady) {
-            pause();
-        }
-        // reading pipe
-        read(pipeh[READ], &selected_mode, sizeof(int));
-        read(pipeh[READ], &initial_value, sizeof(int));
-        read(pipeh[READ], &final_value, sizeof(int));
+void add_alarm_stats(long new_alarm_time)
+{
+    FILE *f = fopen("alarm.clst", "a");
 
-        t = initial_value;
-        
-        struct itimerval  val  = { {0, 100000}, {0, 100000} },
-                          val2 = { {0, 100000}, {0, 100000} };
-        
-        switch(selected_mode) {
-            case TIMER_MODE:
-                signal(SIGALRM, tack);
-                setitimer(ITIMER_REAL, &val, &val2);
-                break;
+    fprintf(
+        f, 
+        "%ldh%02ldm%02ld.%ld\n",
+        new_alarm_time % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+        new_alarm_time % (60 * 60 * 10) / (60 * 10), // minutes
+        new_alarm_time % (60 * 10) / 10, // seconds
+        new_alarm_time % 10 // tenths
+    );
 
-            case ALARM_MODE:
-                signal(SIGALRM, tack);
-                setitimer(ITIMER_REAL, &val, &val2);
-                break;
-
-            case CHRONO_MODE:
-                signal(COUNT, to_count_or_not_to_count);
-                signal(SIGALRM, tick);
-                setitimer(ITIMER_REAL, &val, &val2);
-                break;
-
-        }
-        while (1) {
-            pause();
-        }
-    }
-
-    //  Test fonction conversion
-    // long dix_sec = read_time(argv[1]);
-    // printf("%ld\n", dix_sec);
-
-    //printf("%ld", time_to_wait_alarm(read_time(argv[1])));
-
-    while(1){
-        if(getch()=='c'){
-            printf("cacaprout\n");
-        }
-    }
-    
-    
-
-    return 0;
+    fclose(f);
 }
