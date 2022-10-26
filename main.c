@@ -35,7 +35,7 @@ long update_period = 1;
 int display_offset = 0;
 
 int ppid, pid,
-    apid, tpid, cpid;
+    apid=-1, tpid=-1, cpid=-1;
 int pipeh[2], apipeh[2], tpipeh[2], cpipeh[2];
 
 long initial_value, final_value, alarm_time = -1;
@@ -50,8 +50,10 @@ bool isCounting = true;
 FILE* animation_info;
 FILE** animation_frames;
 
-long chrono_avg, chrono_avg_10, chrono_count;
-long timer_avg, timer_avg_10, timer_count;
+long chrono_avg, chrono_count;
+long timer_avg, timer_count;
+
+char comm[300], str[200];
 
 
 enum {
@@ -59,7 +61,8 @@ enum {
     CHRONO_MODE,
     TIMER_MODE,
     TIME_MODE,
-    UI_MODE
+    UI_MODE,
+    STATS_MODE
 };
 
 void tack(int sig);
@@ -77,13 +80,13 @@ void ready(int sig);
 int pick_from_cli_flag(char *flag);
 void init_ncurses(void);
 
-void get_chrono_stats();
-void set_chrono_stats();
+void get_chrono_stats(void);
+void set_chrono_stats(void);
 
-void get_timer_stats();
-void set_timer_stats();
+void get_timer_stats(void);
+void set_timer_stats(void);
 
-void add_alarm_stats();
+void add_alarm_stats(long new_alarm_time);
 
 
 
@@ -148,6 +151,9 @@ int main(int argc, char** argv)
         }
     }
     else { // le père
+        get_chrono_stats();
+        get_timer_stats();
+
         if (argc > 1) {
             selected_mode = pick_from_cli_flag(argv[1]);
         }
@@ -184,54 +190,149 @@ int main(int argc, char** argv)
                         case 'a':
                             move(display_offset + 6, 0);
                             clrtoeol();
-                            if (alarm_time == -1) {
-                                signal(COUNT, be_lazy);
-                                curs_set(1);
-                                echo();
-                                printw(" set alarm to ring at ");
-                                char str[200];
-                                scanw("%s", str);
-                                alarm_time = read_time(str);
-                                curs_set(0);
-                                noecho();
-                                signal(COUNT, display_tick);
+                            signal(COUNT, be_lazy);
+                            curs_set(1);
+                            echo();
+                            printw(" set alarm to ring at ");
+                            scanw("%s", str);
+                            alarm_time = read_time(str);
+                            curs_set(0);
+                            noecho();
+                            signal(COUNT, display_tick);
 
-                                move(display_offset + 6, 0);
-                                clrtoeol();
-                                printw("alarm :  %ld:%02ld'%02ld.%01ld\"",
-                                    alarm_time % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
-                                    alarm_time % (60 * 60 * 10) / (60 * 10), // minutes
-                                    alarm_time % (60 * 10) / 10, // seconds
-                                    alarm_time % 10 // tenths
-                                );
-                            }
-                            else {
-                                kill(apid, SIGKILL);
-                            }
+                            move(display_offset + 6, 0);
+                            clrtoeol();
+                            printw("alarm :  %ld:%02ld'%02ld.%01ld\"",
+                                alarm_time % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+                                alarm_time % (60 * 60 * 10) / (60 * 10), // minutes
+                                alarm_time % (60 * 10) / 10, // seconds
+                                alarm_time % 10 // tenths
+                            );
+
+                            comm[0] = '\0';
+                            strcat(comm, "xterm -e ./clock a ");
+                            strcat(comm, str);
+                            strcat(comm, " &");
+                            system(comm);
                             break;
 
                         case 'z':
                         case 't':
-                            refresh();  
+                            move(display_offset + 6, 0);
+                            clrtoeol();
+                            signal(COUNT, be_lazy);
+                            curs_set(1);
+                            echo();
+                            printw(" countdown from ");
+                            scanw("%s", str);
+                            alarm_time = read_time(str);
+                            curs_set(0);
+                            noecho();
+                            signal(COUNT, display_tick);
 
+                            move(display_offset + 6, 0);
+                            clrtoeol();
+
+                            comm[0] = '\0';
+                            strcat(comm, "xterm -e ./clock t ");
+                            strcat(comm, str);
+                            strcat(comm, " &");
+                            system(comm);
                             break;
 
                         case 'c':
                         case 'e':
-                                        
-                            refresh();
-
-                            break;    
+                            system("xterm -e ./clock c");
+                            break;
 
                         case 'r':
                         case 's':
+                            srand(time(NULL));
+                            char fun_fact[500];
+                            switch(rand() % 5) {
+                                case 0: strcpy(fun_fact, "Il y a en moyenne 403 naissances au toutes les 24h."); break;
+                                case 1: strcpy(fun_fact, "Un certain clip musical a été visionné 1 305 576 236 sur Youtube."); break;
+                                case 2: strcpy(fun_fact, "La lumière du soleil met 8 minutes à arriver à la terre."); break;
+                                case 3: strcpy(fun_fact, "En moyenne, on cligne des yeux 4 200 000 fois par an."); break;
+                                case 4: strcpy(fun_fact, "Il y a 2 500 000 rivets sur la Tour Eiffel."); break;
 
+                            }
+
+                            mvprintw(8, 0,
+                                "=======================================================================\n"
+                                "= Statistiques                                                        \n"
+                                "=======================================================================\n"
+                                "=                                                                     \n"
+                                "= Vous avez utilisé le chronomètre %ld fois ! Ça fait beaucoup là non ?\n"
+                                "= Valeur chronométrée moyenne : %ldh%02ldm%02ld.%ld\n"
+                                "= \n"
+                                "= Vous avez utilisé le timer %ld fois !\n"
+                                "= Durée moyenne : %ldh%02ldm%02ld.%ld\n"
+                                "= \n"
+                                "= %s\n"
+                                "=====================================================================\n",
+                                
+                                chrono_count,
+                                chrono_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+                                chrono_avg % (60 * 60 * 10) / (60 * 10), // minutes
+                                chrono_avg % (60 * 10) / 10, // seconds
+                                chrono_avg % 10, // tenths
+                                
+                                timer_count,
+                                timer_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+                                timer_avg % (60 * 60 * 10) / (60 * 10), // minutes
+                                timer_avg % (60 * 10) / 10, // seconds
+                                timer_avg % 10, // tenths
+
+                                fun_fact
+                            );
                             break;
                     }
                 }
 
                 endwin();
-                printf("babai");
+                break;
+
+            case STATS_MODE:
+                srand(time(NULL));
+                char fun_fact[500];
+                switch(rand() % 5) {
+                    case 0: strcpy(fun_fact, "Il y a en moyenne 403 naissances au toutes les 24h."); break;
+                    case 1: strcpy(fun_fact, "Un certain clip musical a été visionné 1 305 576 236 sur Youtube."); break;
+                    case 2: strcpy(fun_fact, "La lumière du soleil met 8 minutes à arriver à la terre."); break;
+                    case 3: strcpy(fun_fact, "En moyenne, on cligne des yeux 4 200 000 fois par an."); break;
+                    case 4: strcpy(fun_fact, "Il y a 2 500 000 rivets sur la Tour Eiffel."); break;
+
+                }
+
+                printf(
+                    "=======================================================================\n"
+                    "= Statistiques                                                        \n"
+                    "=======================================================================\n"
+                    "=                                                                     \n"
+                    "= Vous avez utilisé le chronomètre %ld fois ! Ça fait beaucoup là non ?\n"
+                    "= Valeur chronométrée moyenne : %ldh%02ldm%02ld.%ld\n"
+                    "= \n"
+                    "= Vous avez utilisé le timer %ld fois !\n"
+                    "= Durée moyenne : %ldh%02ldm%02ld.%ld\n"
+                    "= \n"
+                    "= %s\n"
+                    "=====================================================================\n",
+                    
+                    chrono_count,
+                    chrono_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+                    chrono_avg % (60 * 60 * 10) / (60 * 10), // minutes
+                    chrono_avg % (60 * 10) / 10, // seconds
+                    chrono_avg % 10, // tenths
+                    
+                    timer_count,
+                    timer_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
+                    timer_avg % (60 * 60 * 10) / (60 * 10), // minutes
+                    timer_avg % (60 * 10) / 10, // seconds
+                    timer_avg % 10, // tenths
+
+                    fun_fact
+                );
                 break;
 
             case TIMER_MODE:
@@ -252,12 +353,13 @@ int main(int argc, char** argv)
                 write(pipeh[WRITE], &final_value, sizeof(final_value)); // final_value
                 kill(pid, READY);
 
+                timer_avg = ((timer_avg * timer_count) + initial_value) / (timer_count + 1);
+                timer_count++;
+                set_timer_stats();
+
                 wait(&status);
 
-                mvprintw(display_offset, 0, "babai");
                 refresh();
-
-                printf("babai");
                 break;
 
             case ALARM_MODE:
@@ -354,8 +456,11 @@ int main(int argc, char** argv)
                     }
                 }
 
+                chrono_avg = ((chrono_avg * chrono_count) + t) / (chrono_count + 1);
+                chrono_count++;
+                set_chrono_stats();
+
                 endwin();
-                printf("babai");
 
                 break;
         }
@@ -598,6 +703,8 @@ void ring(int sig)
         init_ncurses();
     }    
         
+    system("xdg-open ./rr.mp4");
+
     // quit
     endwin();
     kill(pid, SIGKILL);
@@ -641,7 +748,8 @@ int pick_from_cli_flag(char *flag)
         case 'c': return CHRONO_MODE;
         case 't': return TIMER_MODE;
         case 'h': return TIME_MODE;
-        default: return UI_MODE;
+        case 's': return STATS_MODE;
+        default: return TIME_MODE;
     }
 }
 
@@ -671,13 +779,9 @@ void get_chrono_stats()
     fgets(line, 199, f);
     chrono_avg = read_time(line + 4);
 
-    // reading last 10 average, format is "moy10 XXhXXmXX.Xs"
-    fgets(line, 199, f);
-    chrono_avg = read_time(line + 6);
-
     // reading count, format is "count XXX"
     fgets(line, 199, f);
-    chrono_avg = atol(line + 6);
+    chrono_count = atol(line + 6);
 
     fclose(f);
 }
@@ -689,18 +793,12 @@ void set_chrono_stats()
     fprintf(
         f, 
         "moy %ldh%02ldm%02ld.%ld\n"
-        "moy10 %ldh%02ldm%02ld.%ld\n"
-        "count %ld",
+        "count %ld\n",
 
         chrono_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
         chrono_avg % (60 * 60 * 10) / (60 * 10), // minutes
         chrono_avg % (60 * 10) / 10, // seconds
         chrono_avg % 10, // tenths
-
-        chrono_avg_10 % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
-        chrono_avg_10 % (60 * 60 * 10) / (60 * 10), // minutes
-        chrono_avg_10 % (60 * 10) / 10, // seconds
-        chrono_avg_10 % 10, // tenths
 
         chrono_count
     );
@@ -718,13 +816,9 @@ void get_timer_stats()
     fgets(line, 199, f);
     timer_avg = read_time(line + 4);
 
-    // reading last 10 average, format is "moy10 XXhXXmXX.Xs"
-    fgets(line, 199, f);
-    timer_avg = read_time(line + 6);
-
     // reading count, format is "count XXX"
     fgets(line, 199, f);
-    timer_avg = atol(line + 6);
+    timer_count = atol(line + 6);
 
     fclose(f);
 }
@@ -737,18 +831,12 @@ void set_timer_stats()
     fprintf(
         f, 
         "moy %ldh%02ldm%02ld.%ld\n"
-        "moy10 %ldh%02ldm%02ld.%ld\n"
-        "count %ld",
+        "count %ld\n",
 
         timer_avg % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
         timer_avg % (60 * 60 * 10) / (60 * 10), // minutes
         timer_avg % (60 * 10) / 10, // seconds
         timer_avg % 10, // tenths
-
-        timer_avg_10 % (24 * 60 * 60 * 10) / (60 * 60 * 10), // hours
-        timer_avg_10 % (60 * 60 * 10) / (60 * 10), // minutes
-        timer_avg_10 % (60 * 10) / 10, // seconds
-        timer_avg_10 % 10, // tenths
 
         timer_count
     );
